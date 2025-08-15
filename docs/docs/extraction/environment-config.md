@@ -13,6 +13,7 @@ The following are the environment configuration variables that you can specify i
 | `NGC_API_KEY`                    | `nvapi-*************` <br/>                              | An authorized NGC API key, used to interact with hosted NIMs. To create an NGC key, go to [https://org.ngc.nvidia.com/setup/api-keys](https://org.ngc.nvidia.com/setup/api-keys). |
 | `NIM_NGC_API_KEY`                | —                                                          | The key that NIM microservices inside docker containers use to access NGC resources. This is necessary only in some cases when it is different from `NGC_API_KEY`. If this is not specified, `NGC_API_KEY` is used to access NGC resources. |
 | `NVIDIA_BUILD_API_KEY`           | —                                                          | The key to access NIMs that are hosted on build.nvidia.com instead of a self-hosted NIM. This is necessary only in some cases when it is different from `NGC_API_KEY`. If this is not specified, `NGC_API_KEY` is used for build.nvidia.com. |
+| `THIRD_PARTY_NIM_AUTH_TOKEN`     | `bearer-token-*****` <br/>                               | General authentication token for third-party NIM endpoints (e.g., Lepton, AWS, etc.). Used for endpoints that are not NVIDIA-hosted and require authentication. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`    | `http://otel-collector:4317` <br/>                       | The endpoint for the OpenTelemetry exporter, used for sending telemetry data. |
 | `REDIS_INGEST_TASK_QUEUE`      | `ingest_task_queue` <br/>                              | The name of the task queue in Redis where tasks are stored and processed. |
 | `DOWNLOAD_LLAMA_TOKENIZER`       | `True` <br/>                                             | If `True`, the [llama-3.2 tokenizer](https://huggingface.co/meta-llama/Llama-3.2-1B) will be pre-dowloaded at build time. If not set to `True`, the (e5-large-unsupervised)[https://huggingface.co/intfloat/e5-large-unsupervised] tokenizer will be pre-downloaded. Note: setting this to `True` requires a HuggingFace access token with access to the gated Llama-3.2 models. See below for more info. |
@@ -27,3 +28,37 @@ These environment variables apply specifically when running NV-Ingest in library
 |-----------------------------------|---------------------------------------------------------|-------------|
 | `NVIDIA_BUILD_API_KEY`            | `nvapi-*************` <br/>                             | API key for NVIDIA-hosted NIM services. |
 | `NVIDIA_API_KEY`                  | `nvapi-*************` <br/>                             | copy of `NVIDIA_BUILD_API_KEY`, llama-index connectors use this key |
+
+
+## Third-Party NIM Authentication
+
+These environment variables provide authentication for third-party NIM endpoints hosted outside of NVIDIA's infrastructure (e.g., Lepton, AWS, etc.). The system automatically detects the endpoint type and applies the appropriate authentication.
+
+| Name                                    | Example                          | Description |
+|-----------------------------------------|----------------------------------|-------------|
+| `THIRD_PARTY_NIM_AUTH_TOKEN`            | `lep-***************` <br/>      | General authentication token for third-party NIM endpoints. Used as fallback for any third-party endpoint. |
+| `PADDLE_AUTH_TOKEN`                     | `lep-***************` <br/>      | Service-specific authentication token for Paddle OCR endpoints. |
+| `YOLOX_AUTH_TOKEN`                      | `lep-***************` <br/>      | Service-specific authentication token for YOLOX page elements endpoints. |
+| `YOLOX_GRAPHIC_ELEMENTS_AUTH_TOKEN`     | `lep-***************` <br/>      | Service-specific authentication token for YOLOX graphic elements endpoints. |
+| `YOLOX_TABLE_STRUCTURE_AUTH_TOKEN`      | `lep-***************` <br/>      | Service-specific authentication token for YOLOX table structure endpoints. |
+| `EMBEDDING_NIM_AUTH_TOKEN`              | `lep-***************` <br/>      | Service-specific authentication token for embedding NIM endpoints. |
+
+### Authentication Priority
+
+The system follows this authentication priority order:
+
+1. **Local endpoints** (localhost, 127.x.x.x, container names): No authentication
+2. **NVIDIA API endpoints** (api.nvidia.com, ai.api.nvidia.com, etc.): Use `NGC_API_KEY` or `NVIDIA_BUILD_API_KEY`
+3. **Third-party endpoints**: Use service-specific token (e.g., `PADDLE_AUTH_TOKEN`), then fall back to `THIRD_PARTY_NIM_AUTH_TOKEN`, then finally to `NGC_API_KEY`/`NVIDIA_BUILD_API_KEY` for backwards compatibility
+
+### Example Configuration for Lepton AI
+
+```bash
+# For Lepton AI hosted NIMs
+THIRD_PARTY_NIM_AUTH_TOKEN=lep-your-lepton-token-here
+
+# Or use service-specific tokens
+PADDLE_AUTH_TOKEN=lep-your-paddle-token
+YOLOX_AUTH_TOKEN=lep-your-yolox-token
+EMBEDDING_NIM_AUTH_TOKEN=lep-your-embedding-token
+```

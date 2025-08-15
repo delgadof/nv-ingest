@@ -5,6 +5,7 @@
 # TODO(Devin)
 # flake8: noqa
 import os
+from urllib.parse import urlparse
 
 import click
 import logging
@@ -96,6 +97,110 @@ def get_caption_classifier_service():
     return triton_service_caption_classifier, triton_service_caption_classifier_name
 
 
+def _get_auth_token_for_endpoint(http_endpoint: str, prefix: str) -> str:
+    """
+    Determine the appropriate authentication token for a given endpoint.
+    
+    For endpoints that are:
+    - api.nvidia.com domains: Use NGC_API_KEY or NVIDIA_BUILD_API_KEY
+    - Local endpoints (localhost, 127.x.x.x, internal hostnames): Use empty token
+    - Third-party endpoints: Use service-specific token or fallback to NGC/BUILD API key
+    
+    Parameters
+    ----------
+    http_endpoint : str
+        The HTTP endpoint URL
+    prefix : str
+        The environment variable prefix for the service
+        
+    Returns
+    -------
+    str
+        The authentication token to use, or empty string if no auth needed
+    """
+    if not http_endpoint:
+        return ""
+    
+    try:
+        parsed_url = urlparse(http_endpoint)
+        hostname = parsed_url.hostname or ""
+        
+        # Check if it's a local endpoint
+        if _is_local_endpoint(hostname):
+            logger.debug(f"Local endpoint detected ({hostname}), no authentication required")
+            return ""
+        
+        # Check if it's an NVIDIA API endpoint
+        if _is_nvidia_api_endpoint(hostname):
+            logger.debug(f"NVIDIA API endpoint detected ({hostname}), using NGC/Build API key")
+            return os.environ.get("NVIDIA_BUILD_API_KEY", "") or os.environ.get("NGC_API_KEY", "")
+        
+        # For third-party endpoints, first try service-specific token
+        service_specific_token = os.environ.get(f"{prefix}_AUTH_TOKEN", "")
+        if service_specific_token:
+            logger.debug(f"Using service-specific auth token for {hostname}")
+            return service_specific_token
+        
+        # Fallback to general third-party token
+        third_party_token = os.environ.get("THIRD_PARTY_NIM_AUTH_TOKEN", "")
+        if third_party_token:
+            logger.debug(f"Using general third-party auth token for {hostname}")
+            return third_party_token
+        
+        # Final fallback to NGC/Build API key for backwards compatibility
+        logger.debug(f"Using NGC/Build API key as fallback for {hostname}")
+        return os.environ.get("NVIDIA_BUILD_API_KEY", "") or os.environ.get("NGC_API_KEY", "")
+        
+    except Exception as e:
+        logger.warning(f"Error parsing endpoint URL '{http_endpoint}': {e}")
+        # Fallback to default auth
+        return os.environ.get("NVIDIA_BUILD_API_KEY", "") or os.environ.get("NGC_API_KEY", "")
+
+
+def _is_local_endpoint(hostname: str) -> bool:
+    """Check if hostname represents a local endpoint."""
+    if not hostname:
+        return False
+    
+    local_patterns = [
+        "localhost",
+        "127.",  # 127.x.x.x range
+        "192.168.",  # Private network
+        "10.",  # Private network
+        "172.16.", "172.17.", "172.18.", "172.19.", "172.20.",  # Private network 172.16-31.x.x
+        "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+        "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+    ]
+    
+    hostname_lower = hostname.lower()
+    
+    # Check for localhost patterns
+    if any(hostname_lower.startswith(pattern) for pattern in local_patterns):
+        return True
+    
+    # Check for container/service names (no dots, internal hostnames)
+    if "." not in hostname and hostname_lower not in ["localhost"]:
+        return True
+    
+    return False
+
+
+def _is_nvidia_api_endpoint(hostname: str) -> bool:
+    """Check if hostname represents an NVIDIA API endpoint."""
+    if not hostname:
+        return False
+    
+    nvidia_domains = [
+        "api.nvidia.com",
+        "ai.api.nvidia.com", 
+        "integrate.api.nvidia.com",
+        "grpc.nvcf.nvidia.com",
+    ]
+    
+    hostname_lower = hostname.lower()
+    return any(nvidia_domain in hostname_lower for nvidia_domain in nvidia_domains)
+
+
 def get_nim_service(env_var_prefix):
     prefix = env_var_prefix.upper()
     grpc_endpoint = os.environ.get(
@@ -106,13 +211,9 @@ def get_nim_service(env_var_prefix):
         f"{prefix}_HTTP_ENDPOINT",
         "",
     )
-    auth_token = os.environ.get(
-        "NVIDIA_BUILD_API_KEY",
-        "",
-    ) or os.environ.get(
-        "NGC_API_KEY",
-        "",
-    )
+    
+    # Determine authentication token based on endpoint URL
+    auth_token = _get_auth_token_for_endpoint(http_endpoint, prefix)
 
     infer_protocol = os.environ.get(
         f"{prefix}_INFER_PROTOCOL",
@@ -496,15 +597,11 @@ def add_image_caption_stage(pipeline, default_cpu_count, stage_name="image_capti
 
 
 def add_text_embedding_stage(pipeline, default_cpu_count, stage_name="text_embedding"):
-    api_key = os.environ.get(
-        "NVIDIA_BUILD_API_KEY",
-        "",
-    ) or os.environ.get(
-        "NGC_API_KEY",
-        "",
-    )
     embedding_nim_endpoint = os.getenv("EMBEDDING_NIM_ENDPOINT", "http://embedding:8000/v1")
     embedding_model = os.getenv("EMBEDDING_NIM_MODEL_NAME", "nvidia/llama-3.2-nv-embedqa-1b-v2")
+    
+    # Use the same authentication logic as other NIM services
+    api_key = _get_auth_token_for_endpoint(embedding_nim_endpoint, "EMBEDDING_NIM")
 
     config = TextEmbeddingSchema(
         **{

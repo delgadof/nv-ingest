@@ -53,33 +53,9 @@ from nv_ingest_api.internal.schemas.transform.transform_text_splitter_schema imp
 
 
 def get_nim_service(env_var_prefix):
-    prefix = env_var_prefix.upper()
-    grpc_endpoint = os.environ.get(
-        f"{prefix}_GRPC_ENDPOINT",
-        "",
-    )
-    http_endpoint = os.environ.get(
-        f"{prefix}_HTTP_ENDPOINT",
-        "",
-    )
-    auth_token = os.environ.get(
-        "NVIDIA_BUILD_API_KEY",
-        "",
-    ) or os.environ.get(
-        "NGC_API_KEY",
-        "",
-    )
-
-    infer_protocol = os.environ.get(
-        f"{prefix}_INFER_PROTOCOL",
-        "http" if http_endpoint else "grpc" if grpc_endpoint else "",
-    )
-
-    logger.info(f"{prefix}_GRPC_ENDPOINT: {grpc_endpoint}")
-    logger.info(f"{prefix}_HTTP_ENDPOINT: {http_endpoint}")
-    logger.info(f"{prefix}_INFER_PROTOCOL: {infer_protocol}")
-
-    return grpc_endpoint, http_endpoint, auth_token, infer_protocol
+    # Import the production function to ensure consistency
+    from nv_ingest.framework.orchestration.ray.util.pipeline.stage_builders import get_nim_service as prod_get_nim_service
+    return prod_get_nim_service(env_var_prefix)
 
 
 # Broker configuration – using a simple client on a fixed port.

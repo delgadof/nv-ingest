@@ -855,6 +855,12 @@ prometheus:
 ## @param envVars.YOLOX_TABLE_STRUCTURE_INFER_PROTOCOL [default: "grpc"] Protocol for YOLOX table structure
 ## @param envVars.EMBEDDING_NIM_ENDPOINT [default: "http://nv-ingest-embedqa:8000/v1"] Endpoint for embedding service
 ## @param envVars.EMBEDDING_NIM_MODEL_NAME [default: "nvidia/llama-3.2-nv-embedqa-1b-v2"] Model name for embedding service
+## @param envVars.THIRD_PARTY_NIM_AUTH_TOKEN [default: ""] General authentication token for third-party NIM endpoints (Lepton, etc.)
+## @param envVars.PADDLE_AUTH_TOKEN [default: ""] Service-specific authentication token for Paddle endpoint
+## @param envVars.YOLOX_AUTH_TOKEN [default: ""] Service-specific authentication token for YOLOX endpoint
+## @param envVars.YOLOX_GRAPHIC_ELEMENTS_AUTH_TOKEN [default: ""] Service-specific authentication token for YOLOX graphic elements endpoint
+## @param envVars.YOLOX_TABLE_STRUCTURE_AUTH_TOKEN [default: ""] Service-specific authentication token for YOLOX table structure endpoint
+## @param envVars.EMBEDDING_NIM_AUTH_TOKEN [default: ""] Service-specific authentication token for embedding NIM endpoint
 ## @param envVars.MILVUS_ENDPOINT [default: "http://nv-ingest-milvus:19530"] Endpoint for Milvus vector database
 ## @param envVars.VLM_CAPTION_ENDPOINT [default: "https://ai.api.nvidia.com/v1/gr/meta/llama-3.2-11b-vision-instruct/chat/completions"] Endpoint for VLM caption service
 ## @param envVars.VLM_CAPTION_MODEL_NAME [default: "meta/llama-3.2-11b-vision-instruct"] Model name for VLM caption service
