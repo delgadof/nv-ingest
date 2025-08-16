@@ -81,6 +81,105 @@ def preprocess_image_for_paddle(array: np.ndarray, image_max_dimension: int = 96
     return transposed, metadata
 
 
+def _get_auth_headers_for_health_check(http_endpoint: str) -> dict:
+    """
+    Get authentication headers for health check requests based on endpoint type.
+    
+    Parameters
+    ----------
+    http_endpoint : str
+        The HTTP endpoint URL
+        
+    Returns
+    -------
+    dict
+        Dictionary of headers to include in the request
+    """
+    import os
+    from urllib.parse import urlparse
+    
+    headers = {}
+    
+    if not http_endpoint:
+        return headers
+    
+    try:
+        parsed_url = urlparse(http_endpoint)
+        hostname = parsed_url.hostname or ""
+        
+        # Check if it's a local endpoint (no auth needed)
+        if _is_local_endpoint_health(hostname):
+            return headers
+        
+        # Check if it's an NVIDIA API endpoint
+        if _is_nvidia_api_endpoint_health(hostname):
+            auth_token = os.environ.get("NVIDIA_BUILD_API_KEY", "") or os.environ.get("NGC_API_KEY", "")
+            if auth_token:
+                headers["Authorization"] = f"Bearer {auth_token}"
+            return headers
+        
+        # For third-party endpoints, try to get appropriate auth token
+        # Try general third-party token first
+        third_party_token = os.environ.get("THIRD_PARTY_NIM_AUTH_TOKEN", "")
+        if third_party_token:
+            headers["Authorization"] = f"Bearer {third_party_token}"
+            return headers
+        
+        # Fallback to NGC/Build API key
+        auth_token = os.environ.get("NVIDIA_BUILD_API_KEY", "") or os.environ.get("NGC_API_KEY", "")
+        if auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        
+    except Exception as e:
+        logger.warning(f"Error determining auth headers for health check '{http_endpoint}': {e}")
+    
+    return headers
+
+
+def _is_local_endpoint_health(hostname: str) -> bool:
+    """Check if hostname represents a local endpoint for health checks."""
+    if not hostname:
+        return False
+    
+    local_patterns = [
+        "localhost",
+        "127.",  # 127.x.x.x range
+        "192.168.",  # Private network
+        "10.",  # Private network
+        "172.16.", "172.17.", "172.18.", "172.19.", "172.20.",  # Private network 172.16-31.x.x
+        "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+        "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+    ]
+    
+    hostname_lower = hostname.lower()
+    
+    # Check for localhost patterns
+    if any(hostname_lower.startswith(pattern) for pattern in local_patterns):
+        return True
+    
+    # Check for container/service names (no dots, internal hostnames)
+    if "." not in hostname and hostname_lower not in ["localhost"]:
+        return True
+    
+    return False
+
+
+def _is_nvidia_api_endpoint_health(hostname: str) -> bool:
+    """Check if hostname represents an NVIDIA API endpoint for health checks."""
+    if not hostname:
+        return False
+    
+    nvidia_domains = [
+        "api.nvidia.com",
+        "ai.api.nvidia.com", 
+        "integrate.api.nvidia.com",
+        "grpc.nvcf.nvidia.com",
+    ]
+    
+    hostname_lower = hostname.lower()
+    return any(nvidia_domain in hostname_lower for nvidia_domain in nvidia_domains)
+
+
 def is_ready(http_endpoint: str, ready_endpoint: str) -> bool:
     """
     Check if the server at the given endpoint is ready.
@@ -115,10 +214,13 @@ def is_ready(http_endpoint: str, ready_endpoint: str) -> bool:
 
     url = url + ready_endpoint
 
+    # Get authentication headers for third-party endpoints
+    headers = _get_auth_headers_for_health_check(http_endpoint)
+
     # Call the ready endpoint of the NIM
     try:
-        # Use a short timeout to prevent long hanging calls. 5 seconds seems resonable
-        resp = requests.get(url, timeout=5)
+        # Use a short timeout to prevent long hanging calls. 5 seconds seems reasonable
+        resp = requests.get(url, headers=headers, timeout=5)
         if resp.status_code == 200:
             # The NIM is saying it is ready to serve
             return True
@@ -128,7 +230,12 @@ def is_ready(http_endpoint: str, ready_endpoint: str) -> bool:
         else:
             # Any other code is confusing. We should log it with a warning
             # as it could be something that might hold up ready state
-            logger.warning(f"'{url}' HTTP Status: {resp.status_code} - Response Payload: {resp.json()}")
+            try:
+                # Try to get JSON response, but handle cases where it's not JSON
+                response_text = resp.json() if resp.headers.get('content-type', '').startswith('application/json') else resp.text
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                response_text = resp.text
+            logger.warning(f"'{url}' HTTP Status: {resp.status_code} - Response Payload: {response_text}")
             return False
     except requests.HTTPError as http_err:
         logger.warning(f"'{url}' produced a HTTP error: {http_err}")
@@ -171,12 +278,19 @@ def _query_metadata(
         # Use a short timeout to prevent long hanging calls. 5 seconds seems reasonable
         resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
-            field_value = resp.json().get(field_name, "")
-            if field_value:
-                return field_value
-            else:
-                # If the field is empty, retry
-                logger.warning(f"No {field_name} field in response from '{url}'. Retrying.")
+            try:
+                # Try to parse JSON response
+                json_response = resp.json()
+                field_value = json_response.get(field_name, "")
+                if field_value:
+                    return field_value
+                else:
+                    # If the field is empty, retry
+                    logger.warning(f"No {field_name} field in response from '{url}'. Retrying.")
+                    return retry_value
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                # Response is not JSON, log and retry
+                logger.warning(f"Non-JSON response from '{url}': {resp.text[:200]}...")
                 return retry_value
         else:
             # Any other code is confusing. We should log it with a warning
