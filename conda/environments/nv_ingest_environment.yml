@@ -57,4 +57,4 @@ dependencies:
       - nvidia-riva-client==2.20.0
       - unstructured-client
       - markitdown
-      - opentelemetry-exporter-prometheus>=1.27.0,<1.28.0
+      - opentelemetry-exporter-prometheus
