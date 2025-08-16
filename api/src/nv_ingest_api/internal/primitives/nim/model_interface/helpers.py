@@ -273,10 +273,13 @@ def _query_metadata(
 
     url = url + metadata_endpoint
 
+    # Get authentication headers for the request
+    headers = _get_auth_headers_for_health_check(http_endpoint)
+    
     # Call the metadata endpoint of the NIM
     try:
         # Use a short timeout to prevent long hanging calls. 5 seconds seems reasonable
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, headers=headers, timeout=5)
         if resp.status_code == 200:
             try:
                 # Try to parse JSON response

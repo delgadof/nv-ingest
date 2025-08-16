@@ -70,6 +70,17 @@ class NimClient:
             if not self._grpc_endpoint:
                 raise ValueError("gRPC endpoint must be provided for gRPC protocol")
             logger.debug(f"Creating gRPC client with {self._grpc_endpoint}")
+            
+            # Set up gRPC credentials if auth token is provided
+            grpc_options = {}
+            if self.auth_token:
+                import grpc
+                # Create metadata for authorization
+                self._grpc_metadata = [('authorization', f'Bearer {self.auth_token}')]
+                logger.debug("gRPC authentication metadata configured")
+            else:
+                self._grpc_metadata = None
+                
             self.client = grpcclient.InferenceServerClient(url=self._grpc_endpoint)
         elif self.protocol == "http":
             if not self._http_endpoint:
@@ -98,7 +109,14 @@ class NimClient:
 
             try:
                 client = self.client if self.client else grpcclient.InferenceServerClient(url=self._grpc_endpoint)
-                model_config = client.get_model_config(model_name=model_name, model_version=model_version)
+                
+                # Include authentication metadata if available
+                if hasattr(self, '_grpc_metadata') and self._grpc_metadata:
+                    model_config = client.get_model_config(
+                        model_name=model_name, model_version=model_version, metadata=self._grpc_metadata
+                    )
+                else:
+                    model_config = client.get_model_config(model_name=model_name, model_version=model_version)
                 self._max_batch_sizes[model_name] = model_config.config.max_batch_size
                 logger.debug(f"Max batch size for model '{model_name}': {self._max_batch_sizes[model_name]}")
             except Exception as e:
@@ -247,9 +265,17 @@ class NimClient:
         input_tensors.set_data_from_numpy(formatted_input)
 
         outputs = [grpcclient.InferRequestedOutput(output_name) for output_name in output_names]
-        response = self.client.infer(
-            model_name=model_name, parameters=parameters, inputs=[input_tensors], outputs=outputs
-        )
+        
+        # Include authentication metadata if available
+        if hasattr(self, '_grpc_metadata') and self._grpc_metadata:
+            response = self.client.infer(
+                model_name=model_name, parameters=parameters, inputs=[input_tensors], outputs=outputs,
+                metadata=self._grpc_metadata
+            )
+        else:
+            response = self.client.infer(
+                model_name=model_name, parameters=parameters, inputs=[input_tensors], outputs=outputs
+            )
         logger.debug(f"gRPC inference response: {response}")
 
         if len(outputs) == 1:
