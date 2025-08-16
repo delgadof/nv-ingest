@@ -76,3 +76,7 @@ documentation = "https://docs.nvidia.com/nv-ingest"
 
 [tool.setuptools.dynamic]
 version = {attr = "nv_ingest.version.get_version"}
+
+[tool.setuptools.packages.find]
+include = ["nv_ingest*"]
+exclude = ["nvidia_rag*"]
