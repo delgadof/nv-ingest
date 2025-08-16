@@ -98,13 +98,20 @@ async def get_ready_state() -> dict:
         ready_statuses = {"ingest_ready": ingest_ready, "pipeline_ready": pipeline_ready}
         ready_to_work = True  # consider nv-ingest ready until an endpoint proves otherwise
         for endpoint, nim_name in endpoint_nim_name_map.items():
+            # Skip if endpoint is None or empty
+            if not endpoint:
+                continue
+                
+            # Use a fallback name if nim_name is None
+            safe_nim_name = nim_name if nim_name is not None else f"unknown_endpoint_{hash(endpoint) % 1000}"
+            
             endpoint_ready = is_ready(endpoint, "/v1/health/ready")
             if not endpoint_ready:
                 logger.debug(f"Not ready for work. NIM endpoint: '{endpoint}' reporting not ready.")
                 ready_to_work = False
-                ready_statuses[nim_name + "_ready"] = False
+                ready_statuses[safe_nim_name + "_ready"] = False
             else:
-                ready_statuses[nim_name + "_ready"] = True
+                ready_statuses[safe_nim_name + "_ready"] = True
 
         # Build the response for the client
         if ready_to_work:

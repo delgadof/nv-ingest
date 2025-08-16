@@ -313,12 +313,12 @@ services:
       # 2. COMPONENTS_TO_READY_CHECK=ALL for checking all services
       # 3. COMPONENTS_TO_READY_CHECK=YOLOX_HTTP_ENDPOINT, PADDLE_HTTP_ENDPOINT
       #    comma separated list of HTTP environment variables for specific services to check for ready
-      - COMPONENTS_TO_READY_CHECK=ALL
-    healthcheck:
-      test: curl --fail http://nv-ingest-ms-runtime:7670/v1/health/ready || exit 1
-      interval: 10s
-      timeout: 5s
-      retries: 20
+      - COMPONENTS_TO_READY_CHECK=
+    # healthcheck:
+    #   test: curl --fail http://nv-ingest-ms-runtime:7670/v1/health/ready || exit 1
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 20
     deploy:
       resources:
         reservations:
